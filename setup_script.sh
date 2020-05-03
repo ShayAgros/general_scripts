@@ -67,16 +67,7 @@ sed -i '/#define DRV_MODULE_NAME/s/ena/testing_ena/' ena_netdev.h
 EOF
 chmod a+x ~/scripts/change_drv_name.sh
 
-# Create a scripts to update grub
-cat << EOF > ~/scripts/update_grub.sh
-#!/usr/bin/env bash
-
-set -x
-
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-
-sudo grub2-set-default "$(sudo grep 'menuentry ' /boot/grub2/grub.cfg | head -n 1 | cut -f2 -d\')"
-EOF
+# Allowing the grup configure scripts to be executable
 chmod a+x ~/scripts/update_grub.sh
 
 # Create script to reload driver
@@ -114,6 +105,7 @@ exec_com gcc ~/tools/devmem2.c -o ~/devmem2
 
 echo 'alias sip="ip -br a s"' >> ~/.zshrc
 echo 'alias dmc="sudo dmesg -c"' >> ~/.zshrc
+echo 'alias dmC="sudo dmesg -C"' >> ~/.zshrc
 echo 'alias install_linux="git clone https://github.com/torvalds/linux.git ~/linux"' >> ~/.zshrc
 echo 'alias install_net="git clone https://kernel.googlesource.com/pub/scm/linux/kernel/git/davem/net ~/net"' >> ~/.zshrc
 echo 'alias tdump="sudo tcpdump -nni"' >> ~/.zshrc
@@ -122,6 +114,7 @@ echo 'alias ins="sudo insmod"' >> ~/.zshrc
 echo 'alias rmm="sudo rmmod"' >> ~/.zshrc
 echo 'alias reload="~/scripts/reload_driver.sh"' >> ~/.zshrc
 echo 'alias upkernel="~/scripts/update_grub.sh"' >> ~/.zshrc
+echo 'alias u="uname -r"' >> ~/.zshrc
 
 echo 'cd ~/ena-drivers/linux' >> ~/.zshrc
 
