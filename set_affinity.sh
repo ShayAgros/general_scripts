@@ -17,7 +17,15 @@ if [[ $UID > 0 ]]; then
 fi
 
 interface=$1
-num_queues=$(ethtool -l eth0  | grep -A4 Current | sed -ne 's/RX:\s\+\([1-9]\+\)/\1/p')
+num_queues=$(ethtool -l ${interface} | grep -A4 Current | sed -ne 's/RX:\s\+\([1-9]\+\)/\1/p')
+
+# We might be using a newer driver version which uses 'combined' field
+# in ethtool -l instead of specifying rx and tx seperately
+if [[ -z ${num_queues} ]]; then
+	num_queues=$(ethtool -l ${interface} | grep -A4 Current | sed -ne 's/Combined:\s\+\([1-9]\+\)/\1/p')
+
+	[[ -z ${num_queues} ]] && { echo "didn't manage to get number of queues" ; exit 1 ; }
+fi
 
 numa_0_cpus=$(lscpu | sed -n '/NUMA node0/s/^.*:\s\+//p' | sed 's/,/ /')
 final_range=""
@@ -32,9 +40,9 @@ done
 echo "There are $(echo ${final_range} | wc -w) CPUs in NUMA0"
 
 for queue in `seq 0 $(( num_queues -1 ))`; do
-	#starting_cpu=9
-	#used_cpu=$(( starting_cpu + queue * 2 ))
-	used_cpu=$( echo ${final_range} | cut -d' ' -f$(( queue + 1 )) )
+	starting_cpu=9
+	used_cpu=$(( starting_cpu + queue * 2 ))
+	#used_cpu=$( echo ${final_range} | cut -d' ' -f$(( queue + 1 )) )
 	bitmask=$(echo "obase=16; ibase=10; ${used_cpu}" | bc)
 
 	hex_cpu_val=""
