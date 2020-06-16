@@ -12,16 +12,32 @@ if grep -q "Amazon Linux" /etc/*-release >/dev/null 2>&1 ||
    grep -q "rhel" /etc/*-release >/dev/null 2>&1 ; then
 
 	exec_com sudo yum install git vim cscope ctags iperf3 zsh gcc make ncurses-devel flex bison bc -y
-	exec_com sudo yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-	exec_com sudo yum-config-manager --enable epel
-	if grep -q "Amazon Linux" /etc/*-release >/dev/null 2>&1 ; then
-		exec_com sudo yum install -y iperf.x86_64 htop gcc-c++ the_silver_searcher.x86_64
+
+	# AL2 has an old version of cmake which cannot compile clang manually
+	exec_com sudo pip3 install cmake
+
+	# AL2 has the line ID_LIKE="centos rhel fedora" for some reason. Need to
+	# find a better way to distiguish centos
+	#if ! grep -q "centos" /etc/*-release >/dev/null 2>&1 ; then
+		exec_com sudo yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+		exec_com sudo yum-config-manager --enable epel
+	#fi
+	#if grep -q "Amazon Linux" /etc/*-release >/dev/null 2>&1 ; then
+		exec_com sudo yum install -y iperf htop gcc-c++ the_silver_searcher
 
 		# xdp specific
-		exec_com sudo yum install llvm clang libpcam-devel.x86_64 -y
-	fi
+		exec_com sudo yum install llvm clang libpcam-devel libcap-devel.x86_64 -y
+	#fi
 	exec_com sudo yum install kernel-devel-`uname -r` -y
-	grep -q "rhel" /etc/*-release >/dev/null 2>&1 && exec_com sudo yum install elfutils-libelf-devel openssl-devel tcpdump -y
+	exec_com sudo yum install the_silver_searcher.x86_64 -y
+
+	if grep -q "rhel" /etc/*-release >/dev/null 2>&1 ; then
+		exec_com sudo yum install elfutils-libelf-devel openssl-devel tcpdump -y
+		exec_com sudo yum install python3 -y
+	fi
+
+	# make nvim clipboard work
+	exec_com sudo yum install xclip xsel -y
 elif grep -q "ubuntu" /etc/*-release >/dev/null 2>&1 ; then
 	exec_com sudo apt-get update
 	exec_com sudo apt-get install build-essential -y
@@ -30,6 +46,9 @@ elif grep -q "ubuntu" /etc/*-release >/dev/null 2>&1 ; then
 
 	# xdp specific
 	exec_com sudo apt-get install libelf-dev pkg-config -y
+
+	# Set boot directory to be readble by user
+	sudo chmod -R o+rx /boot/
 fi
 
 # Changing default shell
@@ -43,14 +62,6 @@ cd
 # prevent ssh timeout
 exec_com sudo bash -c 'echo -e "\tServerAliveInterval 20" >> /etc/ssh/ssh_config'
 
-# Create an "alias" to unbinding device The use in tee needed for sudo
-# no need to output it to the screen
-cat << EOF | sudo tee /bin/unbind_dev >/dev/null
-#!/bin/bash
-echo "0000:00:06.0" | sudo tee /sys/bus/pci/drivers/ena/unbind
-EOF
-sudo chmod a+x /bin/unbind_dev
-
 # Create an "alias" to binding device. The use in tee needed for sudo
 # no need to output it to the screen
 cat << EOF | sudo tee /bin/bind_dev >/dev/null
@@ -58,9 +69,6 @@ cat << EOF | sudo tee /bin/bind_dev >/dev/null
 echo "0000:00:06.0" | sudo tee /sys/bus/pci/drivers/ena/bind
 EOF
 sudo chmod a+x /bin/bind_dev
-
-# create scripts dir
-mkdir ~/scripts
 
 # allow the change driver name from "ena" to "testing_ena" to be
 # executable
@@ -72,6 +80,22 @@ cat << EOF > ~/scripts/check_config.sh
 grep -i --color ${@:1} /boot/config-`uname -r`
 EOF
 chmod a+x ~/scripts/check_config.sh
+
+# Create script to add ena driver to kernel build
+cat << EOF > ~/scripts/add_amazon_config.sh
+#!/bin/bash
+
+if [[ ! -f .config ]]; then
+	echo No config file's found, copying one from boot
+	cp /boot/config-`uname -r` ./.config || exit 1
+fi
+
+echo CONFIG_NET_VENDOR_AMAZON=y >> ~/linux/.config
+echo CONFIG_ENA_ETHERNET=m >>  ~/linux/.config
+
+make -C ~/linux olddefconfig
+EOF
+chmod a+x ~/scripts/add_amazon_config.sh
 
 # Allowing the grup configure scripts to be executable
 chmod a+x ~/scripts/update_grub.sh
@@ -115,20 +139,20 @@ mkdir Software
 
 # Download and setup vim
 if  ! which nvim >/dev/null 2>&1; then
-	echo Installing neovim stable from GitHub
-	cd ~/Software
-	mkdir nvim && cd nvim
-	curl -LO https://github.com/neovim/neovim/releases/download/stable/nvim.appimage
-	chmod u+x nvim.appimage
-	./nvim.appimage --appimage-extract
-	sudo ln -s `pwd`/squashfs-root/usr/bin/nvim /bin/nvim
+	exec_com echo Installing neovim stable from GitHub
+	exec_com cd ~/Software
+	exec_com mkdir nvim && cd nvim
+	exec_com curl -LO https://github.com/neovim/neovim/releases/download/stable/nvim.appimage
+	exec_com chmod u+x nvim.appimage
+	exec_com ./nvim.appimage --appimage-extract
+	exec_com sudo ln -s `pwd`/squashfs-root/usr/bin/nvim /bin/nvim
 
-	pip3 install --user pynvim
+	exec_com pip3 install --user pynvim
 fi
 # Install personal git config
 cd
 exec_com git clone https://www.github.com/ShayAgros/myVimrc.git || exit 1
-cd myVimrc
+exec_com cd myVimrc
 exec_com ./replace_vimrc.sh
 
 
@@ -146,8 +170,12 @@ echo 'alias upkernel="~/scripts/update_grub.sh"' >> ~/.zshrc
 echo 'alias u="uname -r"' >> ~/.zshrc
 echo 'alias cconfig="~/scripts/check_config.sh"'
 echo 'alias vim=nvim' >> ~/.zshrc
+echo 'alias xdps=~/scripts/configure_xdp.sh' >> ~/.zshrc
+echo 'alias conf_amazon=~/scripts/add_amazon_config.sh' >> ~/.zshrc
+echo 'alias compl="sudo make -j $(getconf _NPROCESSORS_ONLN) modules_install ; sudo make -j $(getconf _NPROCESSORS_ONLN) install"' >> ~/.zshrc
+echo 'alias unbind_dev="~/scripts/unbind_device.sh"' >> ~/.zshrc
 
 echo 'cd ~/ena-drivers/linux' >> ~/.zshrc
 
-# clean after hourselves
+# clean after ourselves
 rm ~/code.tar.bz2 ~/setup_script.sh

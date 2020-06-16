@@ -21,4 +21,5 @@ if [[ -z ${key} ]] || [[ -z ${server} ]]; then
 fi
 
 echo connecting to ${server}
-ssh -X -i ${key} ${server}
+echo ssh -i ${key} ${server}
+ssh -Y -i ${key} ${server}

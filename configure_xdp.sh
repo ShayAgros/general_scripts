@@ -1,13 +1,13 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 # This line changes automatically when choosing default interface
 dev=${1:-""}
 
-max_mtu="3818"
+max_mtu="3498"
 
 function choose_default() {
 
-	interfaces=$(ip -br a s | cut -d' ' -f1 | grep eth | grep -n '^')
+	interfaces=$(ip -br a s | cut -d' ' -f1 | grep -v lo | grep -n '^')
 	interfaces_nr=$(echo "${interfaces}" | wc -l)
 
 	echo "Choose interface interface which would be used"

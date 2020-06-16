@@ -49,6 +49,10 @@ scp -i ${key} /home/shay/.gitconfig ${server}:/home/${user} >/dev/null
 ssh -i ${key} ${server} DEBUG=${DEBUG} mkdir /home/${user}/scripts
 scp -i ${key} /home/shay/scripts/update_grub.sh ${server}:/home/${user}/scripts >/dev/null
 scp -i ${key} /home/shay/scripts/change_drv_name.sh ${server}:/home/${user}/scripts >/dev/null
+scp -i ${key} /home/shay/scripts/configure_xdp.sh ${server}:/home/${user}/scripts >/dev/null
+scp -i ${key} /home/shay/scripts/install_xdp_deps.sh ${server}:/home/${user}/scripts >/dev/null
+scp -i ${key} /home/shay/scripts/build_llvm.sh ${server}:/home/${user}/scripts >/dev/null
+scp -i ${key} /home/shay/scripts/unbind_device.sh ${server}:/home/${user}/scripts >/dev/null
 
 
 echo Setup instance
