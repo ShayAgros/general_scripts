@@ -1,5 +1,7 @@
 #!/bin/bash
 
+GIT_REPO_PATH=$(git rev-parse --show-toplevel)
+
 # This does the folowing:
 # 1) output the content of the file as it is in the latest commit
 # 2) changes the name of the driver
@@ -12,7 +14,7 @@ blobid=$(git show HEAD:linux/ena_netdev.h | sed '/#define DRV_MODULE_NAME/s/ena/
 git update-index --cacheinfo 100644 "$blobid" linux/ena_netdev.h
 
 # This makes the same change for the "unstaged" version of the file
-sed -i '/#define DRV_MODULE_NAME/s/ena/testing_ena/' ena_netdev.h
+sed -i '/#define DRV_MODULE_NAME/s/ena/testing_ena/' ${GIT_REPO_PATH}/linux/ena_netdev.h
 
 # commit this change
 git commit -m "Changed driver name to testing_ena"

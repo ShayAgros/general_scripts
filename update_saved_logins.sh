@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-login_file=~/saved_logins
+INSTANCES_DIR=${HOME}/saved_instances
+login_file=${INSTANCES_DIR}/saved_logins
 
 if [[ ! -f ${login_file} ]]; then
 	echo No saved logins file

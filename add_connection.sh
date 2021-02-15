@@ -5,31 +5,32 @@ function usage {
 	exit 1
 }
 
-login_file=~/saved_logins
-
-#if [[ -f ${login_file} ]]; then
-	## We update the login file first
-	#~/update_saved_logins.sh
-#fi
-
+INSTANCES_DIR=${HOME}/saved_instances
+login_file=${INSTANCES_DIR}/saved_logins
 
 con_command=${@}
 
 
-key=/home/shay/$(echo ${con_command} | sed -ne 's/.*-i \([a-zA-Z]\+\.pem\) .*$/\1/p')
-server=$(echo ${con_command} | sed -ne 's/.*-i [a-zA-Z]\+\.pem \(.*\)$/\1/p')
+key=$(echo ${con_command} | egrep -o -- '-i [^ ]+' | awk -F' ' '{print $2}')
+# append full key path if key exists
+[[ -z $key ]] || key=${HOME}/keys/${key}
+server=$(echo ${con_command} | egrep -o '[^ ]+@[^ ]+($|\s)')
+port=$(echo ${con_command} | egrep -o -- '-p [0-9]+' | awk -F' ' '{print $2}')
 
-if [[ -z ${key} ]] || [[ -z ${server} ]]; then
-    echo "Couldn't extract server and key from arguments"
+if [[ -z ${server} ]]; then
+    echo "Couldn't extract server"
     exit 2
 fi
 
-echo key="${key}"
-echo server=${server}
+[[ ! -z ${port} ]] && server="-p ${port} ${server}"
 
+echo key= "${key:-"no key provided"}"
+echo server= ${server}
+
+mkdir -p ${INSTANCES_DIR} >/dev/null 2>&1
 touch ${login_file} # make sure the login file exists
 
-# done add new entry if already exists
+# don't add entry if it already exists
 grep -q ${server} ${login_file} >/dev/null 2>&1 && exit 0
 
-echo "${server} ${key}" >> ~/saved_logins
+echo "${server} ${key}" >> ${login_file}

@@ -1,5 +1,7 @@
+#!/usr/bin/env bash
+
 function exec_com {
-	if [[ $DEBUG -eq 1 ]]; then
+	if [[ $DEBUG -eq 1 ]] || [[ $V -eq 1 ]]; then
 		echo ${@}
 		"$@"
 	else
@@ -7,13 +9,18 @@ function exec_com {
 	fi
 }
 
+function is_arch {
+	[ $(lscpu | awk '/Architecture:/ {print $2}') == aarch64 ]
+}
+
+
 # install dev tools
 if grep -q "Amazon Linux" /etc/*-release >/dev/null 2>&1 ||
    grep -q "rhel" /etc/*-release >/dev/null 2>&1 ; then
 
-	exec_com sudo yum install git vim cscope ctags iperf3 zsh gcc make ncurses-devel flex bison bc -y
+	exec_com sudo yum install git vim cscope ctags iperf3 zsh gcc make ncurses-devel flex bison bc xauth automake libtool -y
 
-	# AL2 has an old version of cmake which cannot compile clang manually
+	is_arch && exec_com sudo `which pip3` install --upgrade pip
 	exec_com sudo pip3 install cmake
 
 	# AL2 has the line ID_LIKE="centos rhel fedora" for some reason. Need to
@@ -41,13 +48,15 @@ if grep -q "Amazon Linux" /etc/*-release >/dev/null 2>&1 ||
 elif grep -q "ubuntu" /etc/*-release >/dev/null 2>&1 ; then
 	exec_com sudo apt-get update
 	exec_com sudo apt-get install build-essential -y
-	exec_com sudo apt-get install git vim libssl-dev flex bison libncurses-dev cscope ctags \
-			iperf iperf3 zsh python3-pip -y
+	exec_com sudo apt-get install git vim libssl-dev flex bison libncurses-dev cscope universal-ctags \
+			iperf iperf3 zsh python3-pip silversearcher-ag net-tools -y
 
 	# xdp specific
 	exec_com sudo apt-get install libelf-dev pkg-config -y
+	# onload specific
+	exec_com sudo apt-get install libcap-dev libmnl-dev -y
 
-	# Set boot directory to be readble by user
+	# Set boot directory to be readable by user
 	sudo chmod -R o+rx /boot/
 fi
 
@@ -57,10 +66,12 @@ exec_com sudo usermod --shell /bin/zsh `whoami`
 
 cd
 
-[[ -f ~/code.tar.bz2 ]] && tar xf ~/code.tar.bz2
+[[ -f ~/code.tar.bz2 ]] && [[ ! -d ena-drivers ]] && tar xf ~/code.tar.bz2
 
 # prevent ssh timeout
-exec_com sudo bash -c 'echo -e "\tServerAliveInterval 20" >> /etc/ssh/ssh_config'
+if ! grep -q ServerAliveInterval 20 /etc/ssh/ssh_config >/dev/null 2>&1 ; then
+	exec_com sudo bash -c 'echo -e "\tServerAliveInterval 20" >> /etc/ssh/ssh_config'
+fi
 
 # Create an "alias" to binding device. The use in tee needed for sudo
 # no need to output it to the screen
@@ -82,43 +93,18 @@ EOF
 chmod a+x ~/scripts/check_config.sh
 
 # Create script to add ena driver to kernel build
-cat << EOF > ~/scripts/add_amazon_config.sh
-#!/bin/bash
-
-if [[ ! -f .config ]]; then
-	echo No config file's found, copying one from boot
-	cp /boot/config-`uname -r` ./.config || exit 1
-fi
-
-echo CONFIG_NET_VENDOR_AMAZON=y >> ~/linux/.config
-echo CONFIG_ENA_ETHERNET=m >>  ~/linux/.config
-
-make -C ~/linux olddefconfig
-EOF
 chmod a+x ~/scripts/add_amazon_config.sh
 
 # Allowing the grup configure scripts to be executable
 chmod a+x ~/scripts/update_grub.sh
 
-# Create script to reload driver
-cat << EOF > ~/scripts/reload_driver.sh
-#!/usr/bin/env bash
-
-if [[ ! -f \`pwd\`/ena_drv.ko ]]; then
-	DRIVER_PATH='~/ena-drivers/linux'
-else
-	DRIVER_PATH=\`pwd\`
-fi
-
-echo reloading \${DRIVER_PATH}/ena_drv.ko
-
-sudo rmmod ena_drv 2> /dev/null
-sudo insmod \${DRIVER_PATH}/ena_drv.ko
-EOF
-chmod a+x ~/scripts/reload_driver.sh
-
+if [[ ! -d ~/.oh-my-zsh ]]; then
 # Install 'oh-my-zsh'
-exec_com echo "n" | sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)" >/dev/null
+	exec_com echo "n" | sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)" >/dev/null
+# don't write dirty status on command line. It makes zsh very slow for Linux
+# kernel
+	git config --global oh-my-zsh.hide-dirty 1
+fi
 
 zsh_themes=("bira" "af-magic" "agnoster")
 
@@ -129,8 +115,10 @@ sed -ie 's/ZSH_THEME=".*"/ZSH_THEME="bira"/' ~/.zshrc
 sed -ie '/DISABLE_UNTRACKED_FILES_DIRTY/s/#//' ~/.zshrc
 
 # Install devmem2
-exec_com git clone https://github.com/hackndev/tools
-exec_com gcc ~/tools/devmem2.c -o ~/devmem2
+if [[ ! -d ~/devmem2 ]]; then
+	exec_com git clone https://github.com/hackndev/tools
+	exec_com gcc ~/tools/devmem2.c -o ~/devmem2
+fi
 
 # create dir for custom software
 mkdir Software
@@ -138,7 +126,7 @@ mkdir Software
 # install neovim
 
 # Download and setup vim
-if  ! which nvim >/dev/null 2>&1; then
+if  ! is_arch && ! which nvim >/dev/null 2>&1; then
 	exec_com echo Installing neovim stable from GitHub
 	exec_com cd ~/Software
 	exec_com mkdir nvim && cd nvim
@@ -148,19 +136,52 @@ if  ! which nvim >/dev/null 2>&1; then
 	exec_com sudo ln -s `pwd`/squashfs-root/usr/bin/nvim /bin/nvim
 
 	exec_com pip3 install --user pynvim
-fi
-# Install personal git config
-cd
-exec_com git clone https://www.github.com/ShayAgros/myVimrc.git || exit 1
-exec_com cd myVimrc
-exec_com ./replace_vimrc.sh
 
+	# install node which is needed by CoC plugin
+	cd ~/Software
+	exec_com wget https://nodejs.org/dist/v12.18.2/node-v12.18.2-linux-x64.tar.xz
+	exec_com tar xvf node-v12.18.2-linux-x64.tar.xz
+	exec_com cd node-v12.18.2-linux-x64/bin
+	exec_com sudo ln -s `pwd`/node /bin/
+	exec_com sudo ln -s `pwd`/npm /bin/
+fi
+
+if  ! is_arch && ! which fzf >/dev/null 2>&1; then
+	exec_com echo Installing fzf stable from GitHub
+	exec_com cd ~/Software
+	exec_com mkdir fzf && cd fzf
+	exec_com wget https://github.com/junegunn/fzf/releases/download/0.24.4/fzf-0.24.4-linux_amd64.tar.gz
+	exec_com tar xvf *.tar.gz
+
+	exec_com sudo ln -s `pwd`/fzf /usr/bin
+fi
+
+cd
+
+if [[ ! -d ~/myVimrc ]]; then
+	exec_com git clone https://www.github.com/ShayAgros/myVimrc.git || exit 1
+	exec_com cd myVimrc
+	exec_com ./replace_vimrc.sh
+fi
+
+# set up VIM as default editor
+if which nvim >/dev/null 2>&1 ; then
+	echo 'export EDITOR=nvim' >> ~/.zshrc
+else
+	echo 'export EDITOR=vim' >> ~/.zshrc
+fi
+
+# This should allow to start X programs with sudo as well
+echo 'sudo xauth add $(xauth -f ~`whoami`/.Xauthority list|tail -1)' >> ~/.zshrc
+echo ''
 
 echo 'alias sip="ip -br a s"' >> ~/.zshrc
 echo 'alias dmc="sudo dmesg -c"' >> ~/.zshrc
 echo 'alias dmC="sudo dmesg -C"' >> ~/.zshrc
 echo 'alias install_linux="git clone https://github.com/torvalds/linux.git ~/linux"' >> ~/.zshrc
-echo 'alias install_net="git clone https://kernel.googlesource.com/pub/scm/linux/kernel/git/davem/net ~/net"' >> ~/.zshrc
+echo 'alias install_net="git clone git://git.kernel.org/pub/scm/linux/kernel/git/netdev/net.git ~/net"' >> ~/.zshrc
+echo 'alias install_net_next="git clone https://git.kernel.org/pub/scm/linux/kernel/git/netdev/net-next.git ~/net-next"' >> ~/.zshrc
+echo 'alias install_github="git clone https://github.com/amzn/amzn-drivers.git ~/amzn-drivers"' >> ~/.zshrc
 echo 'alias tdump="sudo tcpdump -nni"' >> ~/.zshrc
 echo 'alias change_drv_name="~/scripts/change_drv_name.sh"' >> ~/.zshrc
 echo 'alias ins="sudo insmod"' >> ~/.zshrc
@@ -169,11 +190,13 @@ echo 'alias reload="~/scripts/reload_driver.sh"' >> ~/.zshrc
 echo 'alias upkernel="~/scripts/update_grub.sh"' >> ~/.zshrc
 echo 'alias u="uname -r"' >> ~/.zshrc
 echo 'alias cconfig="~/scripts/check_config.sh"'
-echo 'alias vim=nvim' >> ~/.zshrc
+# If vim exists crete an alist for it
+which nvim >/dev/null 2>&1 && echo 'alias vim=nvim' >> ~/.zshrc
 echo 'alias xdps=~/scripts/configure_xdp.sh' >> ~/.zshrc
-echo 'alias conf_amazon=~/scripts/add_amazon_config.sh' >> ~/.zshrc
+echo 'alias cam=~/scripts/add_amazon_config.sh' >> ~/.zshrc
 echo 'alias compl="sudo make -j $(getconf _NPROCESSORS_ONLN) modules_install ; sudo make -j $(getconf _NPROCESSORS_ONLN) install"' >> ~/.zshrc
 echo 'alias unbind_dev="~/scripts/unbind_device.sh"' >> ~/.zshrc
+echo 'alias ua="~/scripts/unbind_all_devices.sh"' >> ~/.zshrc
 
 echo 'cd ~/ena-drivers/linux' >> ~/.zshrc
 

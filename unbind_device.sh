@@ -11,7 +11,7 @@ if [[ ! -z ${if} ]]; then
 		exit 1
 	fi
 
-	if_pci=$(readlink ${ifs_dir}/${if} | sed -ne "s@.*/\([0-9\.:]\+\)/net/${if}@\1@p")
+	if_pci=$(readlink ${ifs_dir}/${if} | sed -ne "s@.*/\([0-9\.:a-z]\+\)/net/${if}@\1@p")
 
 	echo "interface ${if} is in pci ${if_pci}"
 fi
